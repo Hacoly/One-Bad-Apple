@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#define DEBUG 0
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -94,6 +95,8 @@ int main() {
         printf("Pipe %d created: read end = %d, write end = %d\n", i, ringPipes[i][0], ringPipes[i][1]);
     }
 
+    printf("\n");
+
     // Array to hold the process IDs of the child processes (nodes)
     pid_t childPids[k];
 
@@ -144,7 +147,7 @@ int main() {
 
 
     // Using this to see the node's input and output configuration for debugging
-    printf("Node %d: input from node %d fd %d, output to node %d (fd %d)\n", nodeID, inputIndex, inputReadFd, nextNode, outputWriteFd);
+    if(DEBUG) printf("Node %d: input from node %d fd %d, output to node %d (fd %d)\n", nodeID, inputIndex, inputReadFd, nextNode, outputWriteFd);
 
     for (int j = 0; j < k; j++) {
 
@@ -180,7 +183,7 @@ int main() {
         // Empty message text
         token.text[0] = '\0';
 
-        printf("Node 0 sending initial token with apple to node %d\n", nextNode);
+        if(DEBUG) printf("Node 0 sending initial token with apple to node 1\n");
 
         // Send the initial token to the next node in the ring
         if (write(outputWriteFd, &token, sizeof(Token)) != sizeof(Token)) {
@@ -198,7 +201,7 @@ int main() {
 
         // If bytesRead is 0, it means the pipe has been closed by the previous node, so we should exit
         if (bytesRead == 0) {
-            printf("Node %d: pipe closed, exiting\n", nodeID);
+            printf("\nNode %d: pipe closed, exiting\n", nodeID);
             break;
         }
 
@@ -214,7 +217,7 @@ int main() {
         }
         
         if (token.isEmpty == 0 && token.destinationNode == nodeID) {
-            printf("\nNode %d received message from node %d: %s\n\n", nodeID, token.sourceNode, token.text);
+            printf("\nNode %d received message from node %d: %s\n", nodeID, token.sourceNode, token.text);
             
             // Now we can clear the token for the next message
             token.isEmpty = 1;
@@ -230,7 +233,7 @@ int main() {
         }
 
         // This section is where the parent sends one message the first time it sees an empty token
-        if (nodeID == 0 && token.isEmpty == 1 && hasSentMessage == 0) {
+        if (nodeID == 0 && token.isEmpty == 1) {
 
             int destNode;
 
@@ -282,7 +285,7 @@ int main() {
                         // Mark that we've sent our message
                         hasSentMessage = 1; 
 
-                        printf("Parent has queued message for node %d\n\n", destNode);
+                        printf("\nParent has queued message for node %d\n", destNode);
                     }
         
                 }
