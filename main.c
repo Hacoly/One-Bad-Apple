@@ -23,6 +23,14 @@ void handle_sigint(int sig) {
 
 int main() {
 
+    char destBuffer[64];
+    char messageBuffer[MAX_MESSAGES];
+    // Parent uses this so it only sends once
+    int hasSentMessage = 0;
+
+    // Will be used by the partent to print once when message is confirmed delivered
+    int printedDeliveryConfirm = 0;
+
     // Buffer to hold user input for the number of nodes
     char inputBuffer[64];
 
@@ -136,7 +144,7 @@ int main() {
 
 
     // Using this to see the node's input and output configuration for debugging
-    printf("Node %d: input from node %d (fd %d), output to node %d (fd %d)\n", nodeID, inputIndex, inputReadFd, nextNode, outputWriteFd);
+    printf("Node %d: input from node %d fd %d, output to node %d (fd %d)\n", nodeID, inputIndex, inputReadFd, nextNode, outputWriteFd);
 
     for (int j = 0; j < k; j++) {
 
@@ -196,15 +204,98 @@ int main() {
 
         // Check if the read was successful
         if (bytesRead < 0) {
+
+            // If the read was interrupted by a signal and we should exit, break the loop to allow for cleanup
             if (errno == EINTR && shouldExit) {
                 break;
             }
             perror("read failed");
             break;
         }
-
-        printf("Node %d got apple, passing to node %d\n", nodeID, nextNode);
         
+        if (token.isEmpty == 0 && token.destinationNode == nodeID) {
+            printf("\nNode %d received message from node %d: %s\n\n", nodeID, token.sourceNode, token.text);
+            
+            // Now we can clear the token for the next message
+            token.isEmpty = 1;
+
+            // Clear the destination and source since the message has been delivered
+            token.destinationNode = -1;
+
+            // Clear the source node as well
+            token.sourceNode = -1;
+
+            // Clear the message text
+            token.text[0] = '\0';
+        }
+
+        // This section is where the parent sends one message the first time it sees an empty token
+        if (nodeID == 0 && token.isEmpty == 1 && hasSentMessage == 0) {
+
+            int destNode;
+
+            printf("\nEnter destination node ID 0 to %d: ", k - 1);
+            fflush(stdout);
+
+            if (fgets(destBuffer, sizeof(destBuffer), stdin) == NULL) {
+                printf("Failed to read destination\n");
+                shouldExit = 1;
+            } else {
+                // Convert the input string to an integer
+                destNode = atoi(destBuffer);
+                
+                // Check if the destination node ID is valid
+                if (destNode < 0 || destNode >= k) {
+                    printf("Invalid destination, No message sent\n");
+                } else {
+                    printf("Enter message: ");
+                    fflush(stdout);
+
+                    if (fgets(messageBuffer, sizeof(messageBuffer), stdin) == NULL) {
+                        printf("Failed to read message\n");
+                        shouldExit = 1;
+                    } else {
+                        
+                        // Remove the newline character to make it look pwetty by checking if the last character is a newline and replacing it with a null terminator if it is
+                        size_t len = strlen(messageBuffer);
+
+            
+                        if (len > 0 && messageBuffer[len - 1] == '\n') {
+                            messageBuffer[len - 1] = '\0';
+                        }
+
+                        // Set up the token with the message details
+                        token.isEmpty = 0;
+
+                        // Set the destination node as specified by the user
+                        token.destinationNode = destNode;
+
+                        // Set the source node to 0 since the parent is sending the message
+                        token.sourceNode = 0;
+                        
+                        // Copy the message into the token's text field, ensuring we don't exceed the maximum size
+                        strncpy(token.text, messageBuffer, MAX_MESSAGES);
+                        
+                        // Ensure null termination in case of overflow
+                        token.text[MAX_MESSAGES - 1] = '\0'; 
+
+                        // Mark that we've sent our message
+                        hasSentMessage = 1; 
+
+                        printf("Parent has queued message for node %d\n\n", destNode);
+                    }
+        
+                }
+            }
+        }
+
+        // Parent confirms message delievery when token return empty
+        if (nodeID == 0 && hasSentMessage == 1 && token.isEmpty == 1 && printedDeliveryConfirm == 0) {
+            printf("Parent confirms message was delivered aka the token was returned as empty\n");
+            fflush(stdout);
+            // Just to make sure it only prints once
+            printedDeliveryConfirm = 1; 
+        }
 
         // Pass the token to the next node in the ring
         ssize_t bytesWritten = write(outputWriteFd, &token, sizeof(Token));
